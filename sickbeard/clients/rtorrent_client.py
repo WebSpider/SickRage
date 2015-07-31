@@ -167,6 +167,28 @@ class rTorrentAPI(GenericClient):
 
         return True
 
+    def _set_torrent_pause(self, result):
+
+      if not self.auth:
+            return False
+
+      if not result:
+            return False
+
+        try:
+            # Send pause request to rTorrent
+            if sickbeard.TORRENT_PAUSED:
+                torrent = self.auth.pause(result.hash)
+
+            if not torrent:
+                return False
+
+        except Exception as e:
+            logger.log(traceback.format_exc(), logger.DEBUG)
+            return False
+
+        return True
+
     def testAuthentication(self):
         try:
             self._get_auth()
