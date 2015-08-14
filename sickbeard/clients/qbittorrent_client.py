@@ -25,10 +25,14 @@ from requests.auth import HTTPDigestAuth
 class qbittorrentAPI(GenericClient):
     def __init__(self, host=None, username=None, password=None):
 
-        super(qbittorrentAPI, self).__init__('qbittorrent', host, username, password)
+            super(qbittorrentAPI, self).__init__('qbittorrent', host, username, password)
 
-        self.url = self.host
-        self.session.auth = HTTPDigestAuth(self.username, self.password);
+            if self._get_version == 1:
+        
+                self.url = self.host
+                self.session.auth = HTTPDigestAuth(self.username, self.password);
+            else:
+                logger.log(self.name + u': Unsupported version of qBittorrent', logger.ERROR)
 
     def _get_auth(self):
 
@@ -69,5 +73,14 @@ class qbittorrentAPI(GenericClient):
 
         data = {'hash': result.hash}
         return self._request(method='post', data=data)
+
+    def _get_version(self, result):
+
+        self.url = self.host+'version/api_min'
+        r = self._request(method='get')
+        if r.text == "2":
+           return 2
+        else:
+           return 1
 
 api = qbittorrentAPI()
