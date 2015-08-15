@@ -91,20 +91,29 @@
                                 </label>
                             </div>
                             <div class="field-pair">
+                                <label for="kodi_clean_library">
+                                    <span class="component-title">Clean-up library</span>
+                                    <span class="component-desc">
+                                        <input type="checkbox" name="kodi_clean_library" id="kodi_clean_library" ${('', 'checked="checked"')[bool(sickbeard.KODI_CLEAN_LIBRARY)]}/>
+                                        <p>update KODI library when a show is removed ?</p>
+                                    </span>
+                                </label>
+                            </div>
+                            <div class="field-pair">
                                 <label for="kodi_update_full">
                                     <span class="component-title">Full library update</span>
                                     <span class="component-desc">
                                         <input type="checkbox" name="kodi_update_full" id="kodi_update_full" ${('', 'checked="checked"')[bool(sickbeard.KODI_UPDATE_FULL)]}/>
-                                        <p>perform a full library update if update per-show fails ?</p>
+                                        <p>perform a full library update/clean-up if per-show fails ?</p>
                                     </span>
                                 </label>
                             </div>
                             <div class="field-pair">
                                 <label for="kodi_update_onlyfirst">
-                                    <span class="component-title">Only update first host</span>
+                                    <span class="component-title">Only update/clean first host</span>
                                     <span class="component-desc">
                                         <input type="checkbox" name="kodi_update_onlyfirst" id="kodi_update_onlyfirst" ${('', 'checked="checked"')[bool(sickbeard.KODI_UPDATE_ONLYFIRST)]}/>
-                                        <p>only send library updates to the first active host ?</p>
+                                        <p>only send library update/clean requests to the first active host ?</p>
                                     </span>
                                 </label>
                             </div>

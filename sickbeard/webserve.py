@@ -1619,13 +1619,26 @@ class Home(WebRoot):
 
         showObj.deleteShow(bool(full))
 
-        ui.notifications.message('%s has been %s %s' %
+        if sickbeard.USE_KODI and sickbeard.KODI_CLEAN_LIBRARY:
+            #clean show from library
+
+            if sickbeard.KODI_UPDATE_ONLYFIRST:
+                # only send update to first host in the list -- workaround for kodi sql backend users
+                host = sickbeard.KODI_HOST.split(",")[0].strip()
+            else:
+                host = sickbeard.KODI_HOST
+
+            if notifiers.kodi_notifier.clean_library(showName=showName):
+                ui.notifications.message("Library clean command sent to KODI host(s): " + host)
+            else:
+                ui.notifications.error("Unable to contact one or more KODI host(s): " + host)
+
+            ui.notifications.message('%s has been %s %s' %
                                  (showObj.name,
                                   ('deleted', 'trashed')[bool(sickbeard.TRASH_REMOVE_SHOW)],
                                   ('(media untouched)', '(with all related media)')[bool(full)]))
-        #Dont redirect to default page so user can confirm show was deleted
-        return self.redirect('/home/')
-
+            #Dont redirect to default page so user can confirm show was deleted
+            return self.redirect('/home/')
 
     def refreshShow(self, show=None):
 
@@ -4730,7 +4743,7 @@ class ConfigNotifications(Config):
                           kodi_notify_ondownload=None,
                           kodi_notify_onsubtitledownload=None, kodi_update_onlyfirst=None,
                           kodi_update_library=None, kodi_update_full=None, kodi_host=None, kodi_username=None,
-                          kodi_password=None,
+                          kodi_password=None, kodi_clean_library=None,
                           use_plex=None, plex_notify_onsnatch=None, plex_notify_ondownload=None,
                           plex_notify_onsubtitledownload=None, plex_update_library=None,
                           plex_server_host=None, plex_server_token=None, plex_host=None, plex_username=None, plex_password=None,
@@ -4786,6 +4799,7 @@ class ConfigNotifications(Config):
         sickbeard.KODI_UPDATE_LIBRARY = config.checkbox_to_value(kodi_update_library)
         sickbeard.KODI_UPDATE_FULL = config.checkbox_to_value(kodi_update_full)
         sickbeard.KODI_UPDATE_ONLYFIRST = config.checkbox_to_value(kodi_update_onlyfirst)
+        sickbeard.KODI_CLEAN_LIBRARY = config.checkbox_to_value(kodi_clean_library)
         sickbeard.KODI_HOST = config.clean_hosts(kodi_host)
         sickbeard.KODI_USERNAME = kodi_username
         sickbeard.KODI_PASSWORD = kodi_password

@@ -193,6 +193,45 @@ class KODINotifier:
 
         return False
 
+def _send_clean_library(self, host, showName=None):
+        """Internal wrapper for the clean library function to branch the logic for JSON-RPC or legacy HTTP API
+
+        Checks the KODI API version to branch the logic to call either the legacy HTTP API or the newer JSON-RPC over HTTP methods.
+
+        Args:
+            host: KODI webserver host:port
+            showName: Name of a TV show to specifically target the library update for
+
+        Returns:
+            Returns True or False, if the update was successful
+
+        """
+
+        logger.log(u"Sending request to clean library for KODI host: '" + host + "'", logger.DEBUG)
+
+        kodiapi = self._get_kodi_version(host, sickbeard.KODI_USERNAME, sickbeard.KODI_PASSWORD)
+        if kodiapi:
+            if (kodiapi <= 4):
+                # try to clean for just the show, if it fails, clean complete library if enabled
+                if not self._clean_library(host, showName) and sickbeard.KODI_UPDATE_FULL:
+                    logger.log(u"Single show cleaning failed, falling back to complete library", logger.DEBUG)
+                    return self._clean_library(host)
+                else:
+                    return True
+            else:
+                # try to clean for just the show, if it fails, clean complete library if enabled
+                if not self._clean_library_json(host, showName) and sickbeard.KODI_UPDATE_FULL:
+                    logger.log(u"Single show cleaning failed, falling back to complete library", logger.DEBUG)
+                    return self._clean_library_json(host)
+                else:
+                    return True
+        else:
+            logger.log(u"Failed to detect KODI version for '" + host + "', check configuration and try again.",
+                       logger.WARNING)
+            return False
+
+        return False
+
     # #############################################################################
     # Legacy HTTP API (pre KODI 12) methods
     ##############################################################################
@@ -336,6 +375,38 @@ class KODINotifier:
             if not request:
                 logger.log(u"KODI Full Library update failed on: " + host, logger.ERROR)
                 return False
+
+        return True
+
+def _clean_library(self, host=None, showName=None):
+        """Handles cleaning library of KODI host via HTTP API
+
+        Attempts to clean the KODI video library for a specific tv show if passed,
+        otherwise clean the whole library if enabled.
+
+        Args:
+            host: KODI webserver host:port
+            showName: Name of a TV show to specifically target the library cleaning for
+
+        Returns:
+            Returns True or False
+
+        """
+
+        if not host:
+            logger.log(u'No KODI host passed, aborting update', logger.WARNING)
+            return False
+
+        logger.log(u"Cleaning KODI library via HTTP method for host: " + host, logger.DEBUG)
+        logger.log(u"Per-show cleaning not supported on HTTP API, falling back to complete cleanup", logger.DEBUG)
+
+        logger.log(u"Doing Full Library KODI update on host: " + host, logger.DEBUG)
+        updateCommand = {'command': 'ExecBuiltIn', 'parameter': 'KODI.updatelibrary(video)'}
+        request = self._send_to_kodi(updateCommand, host)
+
+        if not request:
+            logger.log(u"KODI Full Library update failed on: " + host, logger.ERROR)
+            return False
 
         return True
 
@@ -516,6 +587,117 @@ class KODINotifier:
 
         return True
 
+def _clean_library_json(self, host=None, showName=None):
+        """Handles cleaning KODI host via HTTP JSON-RPC
+
+        Attempts to clean the KODI video library for a specific tv show if passed,
+        otherwise clean the whole library if enabled.
+
+        Args:
+            host: KODI webserver host:port
+            showName: Name of a TV show to specifically target the library update for
+
+        Returns:
+            Returns True or False
+
+        """
+
+        if not host:
+            logger.log(u'No KODI host passed, aborting update', logger.WARNING)
+            return False
+
+        logger.log(u"Cleaning KODI library via JSON method for host: " + host, logger.DEBUG)
+
+        # if we're doing per-show
+        if showName:
+            showName = urllib.unquote_plus(showName)
+            tvshowid = -1
+            path = ''
+
+            logger.log(u"Cleaning library in KODI via JSON method for show " + showName, logger.DEBUG)
+
+            # let's try letting kodi filter the shows
+            showsCommand = '{"jsonrpc":"2.0","method":"VideoLibrary.GetTVShows","params":{"filter":{"field":"title","operator":"is","value":"%s"},"properties":["title",]},"id":"SickRage"}'
+
+            # get tvshowid by showName
+            showsResponse = self._send_to_kodi_json(showsCommand % showName, host)
+
+            if showsResponse and "result" in showsResponse and "tvshows" in showsResponse["result"]:
+                shows = showsResponse["result"]["tvshows"]
+            else:
+                # fall back to retrieving the entire show list
+                showsCommand = '{"jsonrpc":"2.0","method":"VideoLibrary.GetTVShows","id":1}'
+                showsResponse = self._send_to_kodi_json(showsCommand, host)
+
+                if showsResponse and "result" in showsResponse and "tvshows" in showsResponse["result"]:
+                    shows = showsResponse["result"]["tvshows"]
+                else:
+                    logger.log(u"KODI: No tvshows in KODI TV show list", logger.DEBUG)
+                    return False
+
+            for show in shows:
+                if ("label" in show and show["label"] == showName) or ("title" in show and show["title"] == showName):
+                    tvshowid = show["tvshowid"]
+                    # set the path is we have it already
+                    if "file" in show:
+                        path = show["file"]
+
+                    break
+
+            # this can be big, so free some memory
+            del shows
+
+            # we didn't find the show (exact match), thus revert to cleaning complete library if enabled
+            if (tvshowid == -1):
+                logger.log(u'Exact show name not matched in KODI TV show list', logger.DEBUG)
+                return False
+
+
+            # lookup tv-show path if we don't already know it
+            if not len(path):
+                pathCommand = '{"jsonrpc":"2.0","method":"VideoLibrary.GetTVShowDetails","params":{"tvshowid":%d, "properties": ["file"]},"id":1}' % (
+                    tvshowid)
+                pathResponse = self._send_to_kodi_json(pathCommand, host)
+
+                path = pathResponse["result"]["tvshowdetails"]["file"]
+
+            logger.log(u"Received Show: " + showName + " with ID: " + str(tvshowid) + " Path: " + path,
+                       logger.DEBUG)
+
+            if not len(path):
+                logger.log(u"No valid path found for " + showName + " with ID: " + str(tvshowid) + " on " + host,
+                           logger.WARNING)
+                return False
+
+            logger.log(u"KODI Cleaning " + showName + " on " + host + " at " + path, logger.DEBUG)
+            cleanCommand = '{"jsonrpc":"2.0","method":"VideoLibrary.Clean","params":{"directory":%s},"id":1}' % (
+                json.dumps(path))
+            request = self._send_to_kodi_json(cleanCommand, host)
+            if not request:
+                logger.log(u"Cleaning show directory failed on " + showName + " on " + host + " at " + path,
+                           logger.ERROR)
+                return False
+
+            # catch if there was an error in the returned request
+            for r in request:
+                if 'error' in r:
+                    logger.log(
+                        u"Error while attempting to clean show directory for " + showName + " on " + host + " at " + path,
+                        logger.ERROR)
+                    return False
+
+        # do a full update if requested
+        else:
+            logger.log(u"Doing Full Library KODI cleaning on host: " + host, logger.DEBUG)
+            updateCommand = '{"jsonrpc":"2.0","method":"VideoLibrary.Clean","id":1}'
+            request = self._send_to_kodi_json(updateCommand, host)
+
+            if not request:
+                logger.log(u"KODI Full Library cleaning failed on: " + host, logger.ERROR)
+                return False
+
+        return True
+
     ##############################################################################
     # Public functions which will call the JSON or Legacy HTTP API methods
     ##############################################################################
@@ -585,5 +767,44 @@ class KODINotifier:
             else:
                 return False
 
+def clean_library(self, showName=None):
+        """Public wrapper for the clean library functions to branch the logic for JSON-RPC or legacy HTTP API
+
+        Checks the KODI API version to branch the logic to call either the legacy HTTP API or the newer JSON-RPC over HTTP methods.
+        Do the ability of accepting a list of hosts deliminated by comma, only one host is updated, the first to respond with success.
+        This is a workaround for SQL backend users as updating multiple clients causes duplicate entries.
+
+        Args:
+            showName: Name of a TV show to specifically target the library cleaning for
+
+        Returns:
+            Returns True or False
+
+        """
+
+        if sickbeard.USE_KODI and sickbeard.KODI_CLEAN_LIBRARY:
+            if not sickbeard.KODI_HOST:
+                logger.log(u"No KODI hosts specified, check your settings", logger.DEBUG)
+                return False
+
+            # either update each host, or only attempt to update until one successful result
+            result = 0
+            for host in [x.strip() for x in sickbeard.KODI_HOST.split(",")]:
+                if self._send_update_library(host, showName):
+                    if sickbeard.KODI_UPDATE_ONLYFIRST:
+                        logger.log(u"Successfully cleaned '" + host + "', stopped sending clean library commands.",
+                                   logger.DEBUG)
+                        return True
+                else:
+                    if sickbeard.KODI_ALWAYS_ON:
+                        logger.log(
+                            u"Failed to detect KODI version for '" + host + "', check configuration and try again.",
+                            logger.WARNING)
+                    result = result + 1
+
+            if result == 0:
+                return True
+            else:
+                return False
 
 notifier = KODINotifier
