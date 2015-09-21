@@ -386,6 +386,9 @@ class SickRage(object):
         while (True):
             time.sleep(1)
 
+        # Add mako path
+        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(sickbeard.CACHE_DIR), 'mako')))
+
     def daemonize(self):
         """
         Fork off as a daemon
